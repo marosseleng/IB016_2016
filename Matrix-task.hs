@@ -100,9 +100,10 @@ identity = undefined
 -- | Multiply a 'Matrix' with a scalar. Matrices are expected to be 'valid'.
 --
 -- >>> scalarMultiply 3 (Matrix [[1,2], [3,4]])
--- Just (Matrix [[3,6], [9,12]])
+-- Matrix [[3,6], [9,12]]
 scalarMultiply :: Num a => a -> Matrix a -> Matrix a
 scalarMultiply number matrix = Matrix (map (map (* number)) $ unMatrix matrix)
+
 -- | Add two matrices if they can be added, return 'Nothing' otherwise.
 -- Matrices are expected to be 'valid'.
 --
@@ -153,7 +154,7 @@ pprint :: Show a => Matrix a -> String
 pprint = undefined
 
 -- | Compute the determinant of a given 'Matrix'.
--- The input 'Matrix' is expected to be 'valid'.
+-- The input 'Matrix' is expected to be 'valid' and 'square'.
 --
 -- For simplicity, use the
 -- <https://en.wikipedia.org/wiki/Laplace_expansion Laplace expansion> method.
