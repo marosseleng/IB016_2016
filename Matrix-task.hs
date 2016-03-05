@@ -40,10 +40,9 @@ newtype Matrix a = Matrix { unMatrix :: [[a]] } deriving ( Show, Eq )
 -- >>> valid (Matrix [[1,2], [3,4,0]])
 -- False
 valid :: Matrix a -> Bool
-valid (Matrix []) = True
-valid (Matrix m)  = let columnsInRow = map length m in
-                      null columnsInRow ||
-                      all (== head columnsInRow) columnsInRow
+valid m = isEmpty m ||
+          all (== head columnsInAllRows) columnsInAllRows
+            where columnsInAllRows = map length (unMatrix m)
 
 -- | Check if the given 'valid' 'Matrix' is a square matrix.
 --
@@ -53,21 +52,19 @@ valid (Matrix m)  = let columnsInRow = map length m in
 -- >>> square (Matrix [[1,2], [3,0]])
 -- True
 square :: Matrix a -> Bool
-square (Matrix []) = True
-square (Matrix m)  = let columnsInRow = map length m in
-                       all (== length m) columnsInRow ||
-                       all (== 0) columnsInRow
+square m = isEmpty m ||
+           all (== length (unMatrix m)) columnsInAllRows
+             where columnsInAllRows = map length (unMatrix m)
 
 -- | Return dimensions (number of rows, length of rows) of a 'valid' 'Matrix'.
 --
 -- >>> dimensions (Matrix [[1,2,2], [3,0,4]])
 -- (2, 3)
 dimensions :: Matrix a -> (Int, Int)
-dimensions (Matrix []) = (0,0)
-dimensions (Matrix m) = let height = head $ map length m in
-                          if height == 0
-                            then (0, height)
-                            else (length m, height)
+dimensions m = if isEmpty m
+                 then (0,0)
+                 else (length (unMatrix m), width)
+                   where width = head $ map length (unMatrix m)
 
 -- | Return a diagonal of a given 'valid' 'Matrix' if it is 'square' matrix, or
 -- 'Nothing' otherwise.
@@ -95,7 +92,11 @@ transpose = undefined
 -- >>> identity 4
 -- Matrix [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
 identity :: Num a => Int -> Matrix a
-identity = undefined
+identity = Matrix . identityOnLists
+
+identityOnLists :: Num a => Int -> [[a]]
+identityOnLists n = [list | row <- [1..n],
+                    let list = [number | col <- [1..n], let number = if row == col then 1 else 0]]
 
 -- | Multiply a 'Matrix' with a scalar. Matrices are expected to be 'valid'.
 --
