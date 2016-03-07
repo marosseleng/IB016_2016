@@ -40,7 +40,7 @@ newtype Matrix a = Matrix { unMatrix :: [[a]] } deriving ( Show, Eq )
 -- >>> valid (Matrix [[1,2], [3,4,0]])
 -- False
 valid :: Matrix a -> Bool
-valid m = isEmpty m ||
+valid m = empty m ||
           all (== head columnsInAllRows) columnsInAllRows
             where columnsInAllRows = map length (unMatrix m)
 
@@ -52,7 +52,7 @@ valid m = isEmpty m ||
 -- >>> square (Matrix [[1,2], [3,0]])
 -- True
 square :: Matrix a -> Bool
-square m = isEmpty m ||
+square m = empty m ||
            all (== length (unMatrix m)) columnsInEveryRow
              where columnsInEveryRow = map length (unMatrix m)
 
@@ -61,7 +61,7 @@ square m = isEmpty m ||
 -- >>> dimensions (Matrix [[1,2,2], [3,0,4]])
 -- (2, 3)
 dimensions :: Matrix a -> (Int, Int)
-dimensions m = if isEmpty m
+dimensions m = if empty m
                  then (0,0)
                  else (length $ unMatrix m, width)
                    where width = head $ map length (unMatrix m)
@@ -77,10 +77,11 @@ dimensions m = if isEmpty m
 diagonal :: Matrix a -> Maybe [a]
 diagonal m
         | (not . square) m = Nothing
-        | isEmpty m        = Just []
-        | otherwise        = Just solution
-                               where listOfLists = unMatrix m
-                                     solution = [row !! col | col <- [0..length listOfLists - 1], let row = listOfLists !! col]
+        | empty m          = Just []
+        | otherwise        = Just sol
+                               where sol = [row !! col |
+                                            col <- [0..length (rows m) - 1],
+                                            let row = rows m !! col]
 
 -- | Transpose a 'valid' matrix.
 --
@@ -98,8 +99,11 @@ transpose (Matrix m) = Matrix [map (!! n) m | n <- [0..(len - 1)]]
 -- >>> identity 4
 -- Matrix [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
 identity :: Num a => Int -> Matrix a
-identity n = Matrix [row | y <- [1..n],
-                    let row = [number | x <- [1..n], let number = if y == x then 1 else 0]]
+identity n = Matrix [row |
+                     y <- [1..n],
+                     let row = [number |
+                                x <- [1..n],
+                                let number = if y == x then 1 else 0]]
 
 -- | Multiply a 'Matrix' with a scalar. Matrices are expected to be 'valid'.
 --
@@ -142,7 +146,14 @@ subtract' x y = if dimensions x /= dimensions y
 -- >>> multiply (Matrix [[1,2], [3,4]]) (Matrix [[2,0], [1,1]])
 -- Matrix [[4,2], [10,4]]
 multiply :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
-multiply = undefined
+multiply m n = if snd (dimensions m) == fst (dimensions n)
+                 then Just (Matrix result)
+                 else Nothing
+                   where result = [row |
+                                   rowM <- rows m,
+                                   let row = [element |
+                                              colN <- cols n,
+                                              let element = sum $ zipWith (*) rowM colN]]
 
 -- | Pretty-print a 'Matrix'. All columns should have same width and should be
 -- aligned to the right.
@@ -175,7 +186,33 @@ printRow xs = unwords $ map show xs
 determinant :: Num a => Matrix a -> a
 determinant = undefined
 
-isEmpty :: Matrix a -> Bool
-isEmpty (Matrix []) = True
-isEmpty (Matrix m)  = let heights = map length m in
+-- | Helper function that checks whether the given 'valid' 'Matrix' is empty.
+--
+-- >>> empty (Matrix [])
+-- True
+--
+-- >>> empty (Matrix [[],[],[],[]])
+-- True
+--
+-- >>> empty (Matrix [[1,2,3],[2,3,4],[3,4,5]])
+-- False
+empty :: Matrix a -> Bool
+empty (Matrix []) = True
+empty (Matrix m)  = let heights = map length m in
                         all (==0) heights
+
+-- | Returns list of rows of a 'Matrix'
+-- The input 'Matrix' is expected to be 'valid'.
+--
+-- >>> rows (Matrix [[1,2],[3,4]])
+-- [[1,2],[3,4]]
+rows :: Matrix a -> [[a]]
+rows = unMatrix
+
+-- | Returns list of columns of a 'Matrix'
+-- The input 'Matrix' is expected to be 'valid'.
+--
+-- >>> rows (Matrix [[1,2],[3,4]])
+-- [[1,3],[2,4]]
+cols :: Matrix a -> [[a]]
+cols = rows . transpose
