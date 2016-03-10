@@ -29,6 +29,8 @@ module Matrix (
     , determinant
     ) where
 
+import qualified Data.List as List
+
 -- | Matrix is represented as a list of rows of elements.
 newtype Matrix a = Matrix { unMatrix :: [[a]] } deriving ( Show, Eq )
 
@@ -78,10 +80,13 @@ diagonal :: Matrix a -> Maybe [a]
 diagonal m
         | (not . square) m = Nothing
         | empty m          = Just []
-        | otherwise        = Just sol
-                               where sol = [row !! col |
-                                            col <- [0..length (rows m) - 1],
-                                            let row = rows m !! col]
+        | otherwise        = Just (diagonalFromList $ unMatrix m)
+
+diagonalFromList :: [[a]] -> [a]
+diagonalFromList []          = []
+diagonalFromList ([]:_)      = [] -- just for the pattern to be exhaustive. This should never occur.
+diagonalFromList ((x:_):xss) = x : diagonalFromList [t | (_:t) <- xss]
+
 
 -- | Transpose a 'valid' matrix.
 --
@@ -91,18 +96,15 @@ diagonal m
 -- >>> transpose (identity 3) == identity 3
 -- True
 transpose :: Matrix a -> Matrix a
-transpose (Matrix m) = Matrix [map (!! n) m | n <- [0..(len - 1)]]
-                         where len = head $ map length m
+transpose (Matrix m) = Matrix $ List.transpose m
 
 -- | For given dimension, return a square identity 'Matrix'.
 --
 -- >>> identity 4
 -- Matrix [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
 identity :: Num a => Int -> Matrix a
-identity n = Matrix [row |
-                     y <- [1..n],
-                     let row = [number |
-                                x <- [1..n],
+identity n = Matrix [row | y <- [1..n],
+                     let row = [number | x <- [1..n],
                                 let number = if y == x then 1 else 0]]
 
 -- | Multiply a 'Matrix' with a scalar. Matrices are expected to be 'valid'.
@@ -136,9 +138,9 @@ add x y = if dimensions x /= dimensions y
 -- >>> subtract' (Matrix [[1,2], [3,4]]) (Matrix [])
 -- Nothing
 subtract' :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
-subtract' x y = if dimensions x /= dimensions y
-                  then Nothing
-                  else Just (Matrix (zipWith (zipWith (-)) (unMatrix x) (unMatrix y)))
+subtract' x y
+         | dimensions x /= dimensions y = Nothing
+         | otherwise = Just (Matrix (zipWith (zipWith (-)) (unMatrix x) (unMatrix y)))
 
 -- | Multiply two matrices if they can be multipled, returns 'Nothing'
 -- otherwise. Matrices are expected to be 'valid'.
@@ -146,14 +148,12 @@ subtract' x y = if dimensions x /= dimensions y
 -- >>> multiply (Matrix [[1,2], [3,4]]) (Matrix [[2,0], [1,1]])
 -- Matrix [[4,2], [10,4]]
 multiply :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
-multiply m n = if snd (dimensions m) == fst (dimensions n)
-                 then Just (Matrix result)
-                 else Nothing
-                   where result = [row |
-                                   rowM <- rows m,
-                                   let row = [element |
-                                              colN <- cols n,
-                                              let element = sum $ zipWith (*) rowM colN]]
+multiply m n
+        | snd (dimensions m) /= fst (dimensions n) = Nothing
+        | otherwise = Just (Matrix res)
+            where res = [row | rowM <- rows m,
+                         let row = [element | colN <- cols n,
+                                    let element = sum $ zipWith (*) rowM colN]]
 
 -- | Pretty-print a 'Matrix'. All columns should have same width and should be
 -- aligned to the right.
@@ -167,11 +167,47 @@ multiply m n = if snd (dimensions m) == fst (dimensions n)
 --   1  42 128
 --   0   1   2
 pprint :: Show a => Matrix a -> String
-pprint (Matrix m)  = unlines $ map printRow m
+pprint (Matrix m) = unlines $ map (printRow colWidth) m
+                      where colWidth = maximum $ map (length . show) (concat m)
 
-printRow :: Show a => [a] -> String
-printRow [] = []
-printRow xs = unwords $ map show xs
+-- Prints the row of a matrix with the specified width of a column.
+-- Function truncates elements which are longer than the desired column width.
+--
+-- This (truncating) should NEVER occur when used in 'pprint' function.
+--
+-- >>> printRow 4 [1,23,456,7890]
+-- "   1   23  456 7890"
+--
+-- >>> printRow 2 [1,23,456,7890]
+-- " 1 23 45 78"
+printRow :: Show a => Int -> [a] -> String
+printRow _ [] = []
+printRow n xs = unwords $ map (showToCertainWidth n) xs
+
+-- | Prints the element to desired number of characters.
+-- If the desired length is less than the actual size,
+-- the character will be truncated!
+--
+-- However this (truncating) should NOT happen while using 'pprint' function.
+--
+-- >>> showToCertainWidth 5 6
+-- "    6"
+--
+-- >>> showToCertainWidth 3 1024
+-- "102"
+showToCertainWidth :: Show a => Int -> a -> String
+showToCertainWidth l s
+                  | l <= length argString = take l argString
+                  | otherwise = prependSpaces (l - length argString) argString
+                      where argString = show s
+
+-- | Add desired number of spaces to the left side of the second argument.
+--
+-- >>> prependSpaces 4 "a"
+-- "    a"
+prependSpaces :: Int -> String -> String
+prependSpaces 0 s = s
+prependSpaces n s = ' ' : prependSpaces (n-1) s
 
 -- | Compute the determinant of a given 'Matrix'.
 -- The input 'Matrix' is expected to be 'valid' and 'square'.
