@@ -186,7 +186,7 @@ printRow n xs = unwords $ map (showToCertainWidth n) xs
 
 -- | Prints the element to desired number of characters.
 -- If the desired length is less than the actual size,
--- the character will be truncated!
+-- the characters will be truncated!
 --
 -- However this (truncating) should NOT happen while using 'pprint' function.
 --
@@ -220,7 +220,40 @@ prependSpaces n s = ' ' : prependSpaces (n-1) s
 -- >>> determinant (Matrix [[1,5,2], [3,4,0], [0,2,0]])
 -- 12
 determinant :: Num a => Matrix a -> a
-determinant = undefined
+determinant m
+           | empty m   = 0
+           | otherwise = listDeterminant $ unMatrix m
+
+-- | Computes determinant on list of lists.
+-- The given list is expected to be from the 'valid' and 'square' 'Matrix'
+--
+-- >>> listDeterminant [[1,5,2], [3,4,0], [0,2,0]]
+-- 12
+listDeterminant :: Num a => [[a]] -> a
+listDeterminant []     = 0
+listDeterminant [[x]]  = x
+listDeterminant (x:xs) = sum $ zipWith (*) firstRowWithSigns determinantsOfSublists
+                           where firstRowWithSigns = zipWith (*) [(-1) ^ n | n <- [firstExponent..]] x
+                                 firstExponent = if odd $ length x then 0 else length x
+                                 colsFromTheRest = List.transpose xs
+                                 subcolsAfterDropping = [c | n <- [0..length x - 1], let c = dropNthSublist n colsFromTheRest]
+                                 determinantsOfSublists = map listDeterminant subcolsAfterDropping
+
+-- | Returns the list of lists without the nth list. List is 0-indexed
+-- When given an empty list, returns empty list.
+--
+-- >>> dropNthSublist 1 [[0,0,0],[1,1,1],[2,2,2]]
+-- [[0,0,0],[2,2,2]]
+--
+-- >>> dropNthSublist 3 [[0,0,0],[1,1,1],[2,2,2]]
+-- [[0,0,0],[1,1,1],[2,2,2]]
+--
+-- >>> dropNthSublist 1 []
+-- []
+dropNthSublist :: Int -> [[a]] -> [[a]]
+dropNthSublist _ []     = []
+dropNthSublist 0 (_:xs) = xs
+dropNthSublist n (x:xs) = x : dropNthSublist (n-1) xs
 
 -- | Helper function that checks whether the given 'valid' 'Matrix' is empty.
 --
