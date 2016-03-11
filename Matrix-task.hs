@@ -63,10 +63,10 @@ square m = empty m ||
 -- >>> dimensions (Matrix [[1,2,2], [3,0,4]])
 -- (2, 3)
 dimensions :: Matrix a -> (Int, Int)
-dimensions m = if empty m
-                 then (0,0)
-                 else (length $ unMatrix m, width)
-                   where width = head $ map length (unMatrix m)
+dimensions m
+          | empty m   = (0,0)
+          | otherwise = (length $ unMatrix m, width)
+              where width = head $ map length (unMatrix m)
 
 -- | Return a diagonal of a given 'valid' 'Matrix' if it is 'square' matrix, or
 -- 'Nothing' otherwise.
@@ -84,7 +84,7 @@ diagonal m
 
 diagonalFromList :: [[a]] -> [a]
 diagonalFromList []          = []
-diagonalFromList ([]:_)      = [] -- just for the pattern to be exhaustive. This should never occur.
+diagonalFromList ([]:_)      = [] -- just for the pattern to be exhaustive.
 diagonalFromList ((x:_):xss) = x : diagonalFromList [t | (_:t) <- xss]
 
 
@@ -123,9 +123,10 @@ scalarMultiply number matrix = Matrix (map (map (* number)) $ unMatrix matrix)
 -- >>> add (Matrix [[1,2], [3,4]]) (Matrix [])
 -- Nothing
 add :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
-add x y = if dimensions x /= dimensions y
-            then Nothing
-            else Just (Matrix (zipWith (zipWith (+)) (unMatrix x) (unMatrix y)))
+add x y
+   | dimensions x /= dimensions y = Nothing
+   | otherwise                    = Just (Matrix sol)
+       where sol = zipWith (zipWith (+)) (unMatrix x) (unMatrix y)
 
 -- | Subtract two matrices if possible, return 'Nothing' otherwise.
 -- Matrices are expected to be 'valid'.
@@ -140,7 +141,8 @@ add x y = if dimensions x /= dimensions y
 subtract' :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
 subtract' x y
          | dimensions x /= dimensions y = Nothing
-         | otherwise = Just (Matrix (zipWith (zipWith (-)) (unMatrix x) (unMatrix y)))
+         | otherwise                    = Just (Matrix sol)
+             where sol = zipWith (zipWith (-)) (unMatrix x) (unMatrix y)
 
 -- | Multiply two matrices if they can be multipled, returns 'Nothing'
 -- otherwise. Matrices are expected to be 'valid'.
@@ -150,7 +152,7 @@ subtract' x y
 multiply :: Num a => Matrix a -> Matrix a -> Maybe (Matrix a)
 multiply m n
         | snd (dimensions m) /= fst (dimensions n) = Nothing
-        | otherwise = Just (Matrix res)
+        | otherwise                                = Just (Matrix res)
             where res = [row | rowM <- rows m,
                          let row = [element | colN <- cols n,
                                     let element = sum $ zipWith (*) rowM colN]]
@@ -198,8 +200,9 @@ printRow n xs = unwords $ map (showToCertainWidth n) xs
 showToCertainWidth :: Show a => Int -> a -> String
 showToCertainWidth l s
                   | l <= length argString = take l argString
-                  | otherwise = prependSpaces (l - length argString) argString
-                      where argString = show s
+                  | otherwise             = prependSpaces spacesNeeded argString
+                      where argString    = show s
+                            spacesNeeded = l - length argString
 
 -- | Add desired number of spaces to the left side of the second argument.
 --
