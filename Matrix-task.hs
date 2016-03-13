@@ -29,8 +29,6 @@ module Matrix (
     , determinant
     ) where
 
-import qualified Data.List as List
-
 -- | Matrix is represented as a list of rows of elements.
 newtype Matrix a = Matrix { unMatrix :: [[a]] } deriving ( Show, Eq )
 
@@ -80,12 +78,12 @@ diagonal :: Matrix a -> Maybe [a]
 diagonal m
         | (not . square) m = Nothing
         | empty m          = Just []
-        | otherwise        = Just (diagonalFromList $ unMatrix m)
+        | otherwise        = Just (diagonalRecursive $ unMatrix m)
 
-diagonalFromList :: [[a]] -> [a]
-diagonalFromList []          = []
-diagonalFromList ([]:_)      = [] -- just for the pattern to be exhaustive.
-diagonalFromList ((x:_):xss) = x : diagonalFromList [t | (_:t) <- xss]
+diagonalRecursive :: [[a]] -> [a]
+diagonalRecursive []          = []
+diagonalRecursive ([]:_)      = [] -- should never occur on 'valid' 'Matrix'.
+diagonalRecursive ((x:_):xss) = x : diagonalRecursive [t | (_:t) <- xss]
 
 
 -- | Transpose a 'valid' matrix.
@@ -96,7 +94,14 @@ diagonalFromList ((x:_):xss) = x : diagonalFromList [t | (_:t) <- xss]
 -- >>> transpose (identity 3) == identity 3
 -- True
 transpose :: Matrix a -> Matrix a
-transpose (Matrix m) = Matrix $ List.transpose m
+transpose (Matrix m) = Matrix $ transposeList m
+
+transposeList :: [[a]] -> [[a]]
+transposeList []  = []
+transposeList ([]:xs) = transposeList xs
+transposeList ((h:t):xs) = (h : [h1 | (h1:_) <- xs]) :
+                           transposeList (t : [t1 | (_:t1) <- xs])
+
 
 -- | For given dimension, return a square identity 'Matrix'.
 --
@@ -201,7 +206,7 @@ showToCertainWidth :: Show a => Int -> a -> String
 showToCertainWidth l s
                   | l <= length argString = take l argString
                   | otherwise             = prependSpaces spacesNeeded argString
-                      where argString    = show s
+                      where argString = show s
                             spacesNeeded = l - length argString
 
 -- | Add desired number of spaces to the left side of the second argument.
@@ -238,7 +243,7 @@ listDeterminant [[x]]  = x
 listDeterminant (x:xs) = sum $ zipWith (*) firstRowWithSigns determinantsOfSublists
                            where firstRowWithSigns = zipWith (*) [(-1) ^ n | n <- [firstExponent..]] x
                                  firstExponent = if odd $ length x then 0 else length x
-                                 colsFromTheRest = List.transpose xs
+                                 colsFromTheRest = transposeList xs
                                  subcolsAfterDropping = [c | n <- [0..length x - 1], let c = dropNthSublist n colsFromTheRest]
                                  determinantsOfSublists = map listDeterminant subcolsAfterDropping
 
