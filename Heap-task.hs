@@ -50,6 +50,7 @@ module PriorityQueue
     ) where
 
 import Data.Maybe
+import Data.List (nub)
 -- | Defines a 'PriorityQueue' type. It should implement a (binary) heap. Note
 -- that the data constructors of this type are not exported from the module to
 -- disallow direct manipulations. (If they should have been exported the module
@@ -76,21 +77,6 @@ data Tree p v = Node Int (p,v) [Tree p v]
 --
 instance (Show p, Show v, Ord p) => Show (PriorityQueue p v) where
   show q = "fromList " ++ show (toDescList q)
-
--- These functions are not exported from the module, however, they can be
--- useful for directing descend into the appropriate branch of a binary heap in
--- insert. They calculate minimal and maximal length of path from root to leaf
--- in binary heap of given size.
-maxPathForSize :: Int -> Int
-maxPathForSize 0 = 0
-maxPathForSize n = 1 + maxPathForSize (n `div` 2)
-
-minPathForSize :: Int -> Int
-minPathForSize n
-    | 2 ^ mh - 1 == n = mh
-    | otherwise       = mh - 1
-  where
-    mh = maxPathForSize n
 
 -- | /O(1)/. An empty 'PriorityQueue'.
 --
@@ -162,22 +148,12 @@ extractTop :: Ord p => PriorityQueue p v -> PriorityQueue p v
 extractTop PQEmpty        = empty
 extractTop (PQueue 1 _ _) = empty -- this could do mess with the use of removeMaxTree, as there is only 1 tree with rank 0
 extractTop (PQueue s _ l) = PQueue (s-1) newT newL
-                                where newT = root . fst $ removeMaxTree newL
-                                      newL = reverse rmvdSubtrees `unionOfLists` rest
-                                      rmvd = removeMaxTree l
-                                      rest = snd rmvd
-                                      removedTree = fst rmvd
-                                      rmvdSubtrees = subtrees removedTree
-
-removeMaxTree :: Ord p => [Tree p v] -> (Tree p v, [Tree p v])
--- removeMaxTree []: this situation should never occur, as the tree that has no subtrees is of rank 0
--- that is why I am ignoring the "Pattern match(es) are non-exhaustive warning."
-removeMaxTree [] = undefined
-removeMaxTree [t]    = (t, [])
-removeMaxTree (t:ts) = if (fst . root $ t) > (fst . root $ u)
-                         then (t,ts)
-                         else (u,t:us)
-                           where (u,us) = removeMaxTree ts
+                              where newT = root . fst $ removeMaxTree newL
+                                    newL = reverse rmvdSubtrees `unionOfLists` rest
+                                    rmvd = removeMaxTree l
+                                    rest = snd rmvd
+                                    removedTree = fst rmvd
+                                    rmvdSubtrees = subtrees removedTree
 
 -- | /O(log n)/. Get and extract the element with highest priority from the
 -- given 'PriorityQueue'. Returns 'Nothing' if and only if the 'PriorityQueue'
@@ -259,14 +235,6 @@ union (PQueue s1 t1 l1) (PQueue s2 t2 l2) = PQueue newS newT newL
                                                     newT = if fst t1 > fst t2 then t1 else t2
                                                     newL = unionOfLists l1 l2
 
-unionOfLists :: Ord p => [Tree p v] -> [Tree p v] -> [Tree p v]
-unionOfLists [] l              = l
-unionOfLists l []              = l
-unionOfLists l@(x:xs) k@(y:ys)
-            | rank x > rank y = x : unionOfLists xs k
-            | rank y > rank x = y : unionOfLists l ys
-            | otherwise       = insertTree (link x y) (unionOfLists xs ys)
-
 -- | Define @'PriorityQueue' p@ to be an instance of 'Functor', keep in mind the
 -- standard behaviour of 'Functor'.
 instance Functor (PriorityQueue p) where
@@ -283,35 +251,95 @@ valid PQEmpty          = True
 valid (PQueue s _ l) = s == sizeFromRanks l &&
                        all validTree l
 
-validTree :: Ord p => Tree p v -> Bool
-validTree (Node r t l) = all (<= fst t) (map (fst . root) l) &&
-                         all (<= r) (map rank l) &&
-                         all validTree l
-
+-- | Computes the size of a BINOMIAL heap from ranks of its binomial trees
+-- Size of a binomial tree can be computed as 2^rank,
+-- so the size of a binomial heap equals the sum of sizes of its trees
+--
 sizeFromRanks :: [Tree p v] -> Int
 sizeFromRanks [] = 0
 sizeFromRanks x  = sum $ map ((2^) . rank) x
 
+-- | Checks whether the given Binomial tree is valid or not.
+-- Function compares 3 things:
+--    * all my subtrees MUST have LOWER rank that me
+--    * ranks of the subtrees have to be DISTINCT
+--    * my root's priority has to be EQUAL OR GREATER THAN each my inner node's priority
+--    * each of my subtrees has to be a VALID BINOMIAL TREE
+--
+validTree :: Ord p => Tree p v -> Bool
+validTree (Node r t l) = all (<= r) (map rank l) &&
+                         onlyDistinct (map rank l) &&
+                         all (<= fst t) (map (fst . root) l) &&
+                         all validTree l
+
+-- | Returns true if the given list contains only distinct values
+-- O(n^2)
+--
+onlyDistinct :: Eq a => [a] -> Bool
+onlyDistinct l = length l == (length . nub) l
+
+-- | Returns BINOMIAL tree with single value
+--
 singletonTree :: p -> v -> Tree p v
 singletonTree p v = Node 0 (p,v) []
 
+-- | Inserts a BINOMIAL tree to the forest of binomial trees
+-- There CANNOT be trees with identical rank in the forest
+--
 insertTree :: Ord p => Tree p v -> [Tree p v] -> [Tree p v]
 insertTree t []        = [t]
 insertTree t ts@(x:xs)
           | rank t < rank x = t:ts
           | otherwise       = insertTree (link t x) xs
 
-
+-- | Links two binomial trees together:
+-- A tree with lower root's priority is inserted as the left-most child of the second tree
+-- Links EXACTLY TWO trees with the SAME rank resulting in ONE tree with rank + 1
+--
 link :: Ord p => Tree p v -> Tree p v -> Tree p v
 link s@(Node r1 t1 xs) t@(Node _ t2 ys)
     | fst t1 > fst t2 = Node (r1 + 1) t1 (t:xs)
     | otherwise       = Node (r1 + 1) t2 (s:ys)
 
+-- | Removes the tree that contains the biggest priority from the forest
+-- Returns deleted tree and rest of trees of the forest
+-- I am ignoring the "non-exhaustive pattern" warning, because there is no
+-- reasonable value hat can be returned from the function in that case. Moreover
+-- this situation should never occur, because for the empty heap there is already
+-- a constructor that doesn't even take a list of trees as a parameter.
+--
+removeMaxTree :: Ord p => [Tree p v] -> (Tree p v, [Tree p v])
+removeMaxTree [t]    = (t, [])
+removeMaxTree (t:ts) = if (fst . root $ t) > (fst . root $ u)
+                         then (t,ts)
+                         else (u,t:us)
+                           where (u,us) = removeMaxTree ts
+
+-- | Returns the rank of a tree
+-- O(1)
+--
 rank :: Tree p v -> Int
 rank (Node r _ _) = r
 
+-- | Returns the root of a tree
+-- O(1)
+--
 root :: Tree p v -> (p,v)
 root (Node _ t _) = t
 
+-- | Returns the list of subtrees of the given tree
+-- O(1)
+--
 subtrees :: Tree p v -> [Tree p v]
 subtrees (Node _ _ l) = l
+
+
+-- | Merges two binomial forests (lists of binomial trees) together
+-- 
+unionOfLists :: Ord p => [Tree p v] -> [Tree p v] -> [Tree p v]
+unionOfLists [] l              = l
+unionOfLists l []              = l
+unionOfLists l@(x:xs) k@(y:ys)
+            | rank x > rank y = x : unionOfLists xs k
+            | rank y > rank x = y : unionOfLists l ys
+            | otherwise       = insertTree (link x y) (unionOfLists xs ys)
