@@ -60,8 +60,10 @@ import Data.Maybe
 -- derive 'Show' instance during development and change to a custom-defined
 -- instance once you trust your implementation.
 data PriorityQueue p v = PQEmpty | PQueue Int (p,v) [Tree p v]
+                         deriving(Eq)
 
 data Tree p v = Node Int (p,v) [Tree p v]
+                deriving(Eq)
 
 -- | /O(n log n)/. Define instance of 'Show' similar to the one for
 -- 'Data.Map.Map'.
@@ -277,7 +279,18 @@ instance Functor (PriorityQueue p) where
 -- leaf differ at most by one, and that the priority is nonascending on every
 -- path from root to leaf). You should use this function for testing.
 valid :: Show p => Ord p => PriorityQueue p v -> Bool
-valid = undefined
+valid PQEmpty          = True
+valid (PQueue s _ l) = s == sizeFromRanks l &&
+                       all validTree l
+
+validTree :: Ord p => Tree p v -> Bool
+validTree (Node r t l) = all (<= fst t) (map (fst . root) l) &&
+                         all (<= r) (map rank l) &&
+                         all validTree l
+
+sizeFromRanks :: [Tree p v] -> Int
+sizeFromRanks [] = 0
+sizeFromRanks x  = sum $ map ((2^) . rank) x
 
 singletonTree :: p -> v -> Tree p v
 singletonTree p v = Node 0 (p,v) []
