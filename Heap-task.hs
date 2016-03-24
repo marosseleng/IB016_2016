@@ -23,8 +23,8 @@
 -- You can use any modules from the @Base@ package if you wish.
 -- However, you may not use any other packages.
 --
--- Name: Name Surname
--- UID: 123456
+-- Name: Maros Seleng
+-- UID: 422624
 
 module PriorityQueue
     ( -- * Priority Queue Type
@@ -49,6 +49,7 @@ module PriorityQueue
     , valid
     ) where
 
+import Data.Maybe
 -- | Defines a 'PriorityQueue' type. It should implement a (binary) heap. Note
 -- that the data constructors of this type are not exported from the module to
 -- disallow direct manipulations. (If they should have been exported the module
@@ -59,10 +60,9 @@ module PriorityQueue
 -- derive 'Show' instance during development and change to a custom-defined
 -- instance once you trust your implementation.
 data PriorityQueue p v = PQEmpty | PQueue Int (p,v) [Tree p v]
-                       deriving (Show)
 
 data Tree p v = Node Int (p,v) [Tree p v]
-              deriving (Show)
+
 -- | /O(n log n)/. Define instance of 'Show' similar to the one for
 -- 'Data.Map.Map'.
 --
@@ -72,14 +72,8 @@ data Tree p v = Node Int (p,v) [Tree p v]
 -- >>> show $ singleton 42 ()
 -- "fromList [(42,())]
 --
---instance (Show p, Show v, Ord p) => Show (PriorityQueue p v) where
---  show = undefined
-
--- | /O(n log n)/. Compare two 'PriorityQueue's for equality of their contents.
--- It does not take into account the concrete structure of the given underlying
--- heaps.
-instance (Ord p, Eq v) => Eq (PriorityQueue p v) where
-  (==) = undefined
+instance (Show p, Show v, Ord p) => Show (PriorityQueue p v) where
+  show q = "fromList " ++ show (toDescList q)
 
 -- These functions are not exported from the module, however, they can be
 -- useful for directing descend into the appropriate branch of a binary heap in
@@ -109,9 +103,6 @@ empty = PQEmpty
 -- fromList [(42,"hi")]
 singleton :: Ord p => p -> v -> PriorityQueue p v
 singleton p v = PQueue 1 (p,v) [singletonTree p v]
-
-singletonTree :: p -> v -> Tree p v
-singletonTree p v = Node 0 (p,v) []
 
 -- | /O(1)/. Is the 'PriorityQueue' empty?
 --
@@ -145,20 +136,6 @@ insert p v (PQueue s t l) = PQueue (s + 1) newT newL
                               where newT = if p > fst t then (p,v) else t
                                     newL = insertTree (singletonTree p v) l
 
-insertTree :: Ord p => Tree p v -> [Tree p v] -> [Tree p v]
-insertTree t []        = [t]
-insertTree t ts@(x:xs)
-          | rank t < rank x = t:ts
-          | otherwise       = insertTree (link t x) xs
-
-rank :: Tree p v -> Int
-rank (Node r _ _) = r
-
-link :: Ord p => Tree p v -> Tree p v -> Tree p v
-link s@(Node r1 t1 xs) t@(Node _ t2 ys)
-    | fst t1 > fst t2 = Node (r1 + 1) t1 (t:xs)
-    | otherwise       = Node (r1 + 1) t2 (s:ys)
-
 -- | /O(1)/. Get the element with highest priority from the given 'PriorityQueue'.
 -- Returns 'Nothing' if and only if the 'PriorityQueue' is 'empty'.
 --
@@ -180,7 +157,25 @@ getTop (PQueue _ top _) = Just top
 -- >>> extractTop empty
 -- fromList []
 extractTop :: Ord p => PriorityQueue p v -> PriorityQueue p v
-extractTop = undefined
+extractTop PQEmpty        = empty
+extractTop (PQueue 1 _ _) = empty -- this could do mess with the use of removeMaxTree, as there is only 1 tree with rank 0
+extractTop (PQueue s _ l) = PQueue (s-1) newT newL
+                                where newT = root . fst $ removeMaxTree newL
+                                      newL = reverse rmvdSubtrees `unionOfLists` rest
+                                      rmvd = removeMaxTree l
+                                      rest = snd rmvd
+                                      removedTree = fst rmvd
+                                      rmvdSubtrees = subtrees removedTree
+
+removeMaxTree :: Ord p => [Tree p v] -> (Tree p v, [Tree p v])
+-- removeMaxTree []: this situation should never occur, as the tree that has no subtrees is of rank 0
+-- that is why I am ignoring the "Pattern match(es) are non-exhaustive warning."
+removeMaxTree [] = undefined
+removeMaxTree [t]    = (t, [])
+removeMaxTree (t:ts) = if (fst . root $ t) > (fst . root $ u)
+                         then (t,ts)
+                         else (u,t:us)
+                           where (u,us) = removeMaxTree ts
 
 -- | /O(log n)/. Get and extract the element with highest priority from the
 -- given 'PriorityQueue'. Returns 'Nothing' if and only if the 'PriorityQueue'
@@ -192,7 +187,9 @@ extractTop = undefined
 -- >>> extractGetTop empty
 -- Nothing
 extractGetTop :: Ord p => PriorityQueue p v -> Maybe ((p, v), PriorityQueue p v)
-extractGetTop = undefined
+extractGetTop PQEmpty          = Nothing
+extractGetTop q@(PQueue _ t _) = Just (t,r)
+                                   where r = extractTop q
 
 -- | /O(log n)/. Replace the highest priority element with new priority and
 -- value.
@@ -203,7 +200,7 @@ extractGetTop = undefined
 -- >>> replaceTop 0 "a" $ fromList [(1, ""), (3, "")]
 -- fromList [(1,""),(0,"a")]
 replaceTop :: Ord p => p -> v -> PriorityQueue p v -> PriorityQueue p v
-replaceTop = undefined
+replaceTop p v q = insert p v $ extractTop q
 
 -- | /O(log n)/. Replace the highest priority element using a function callback
 -- which is called with the current priority and value of the top element. If
@@ -216,7 +213,12 @@ replaceTop = undefined
 -- >>> modifyTop (\k v -> Just (k - 2, v)) $ fromList [(1, ""), (2, "")]
 -- fromList [(1,""),(0,"")]
 modifyTop :: Ord p => (p -> v -> Maybe (p, v)) -> PriorityQueue p v -> PriorityQueue p v
-modifyTop = undefined
+modifyTop _ PQEmpty          = empty
+modifyTop f q@(PQueue _ t _)
+         | isJust newTop = uncurry insert (fromJust newTop) newQ
+         | otherwise     = newQ
+           where newTop = uncurry f t
+                 newQ   = extractTop q
 
 -- | /O(n log n)/. Build a 'PriorityQueue' from a list of priority – value pairs.
 --
@@ -226,7 +228,8 @@ modifyTop = undefined
 -- >>> fromList [(0, ()), (4, ()), (17, ()), (3, ())]
 -- fromList [(17,()),(4,()),(3,()),(0,())]
 fromList :: Ord p => [(p, v)] -> PriorityQueue p v
-fromList = undefined
+fromList []         = empty
+fromList ((p,v):xs) = insert p v (fromList xs)
 
 -- | /O(n log n)/. Convert the given 'PriorityQueue' to a list of its priority
 -- – value pairs ordered by priority in descending order.
@@ -234,7 +237,10 @@ fromList = undefined
 -- >>> toDescList $ fromList [(0, ()), (4, ()), (17, ()), (3, ())]
 -- [(17,()),(4,()),(3,()),(0,())]
 toDescList :: Ord p => PriorityQueue p v -> [(p, v)]
-toDescList = undefined
+toDescList PQEmpty = []
+toDescList q       = top : toDescList rest
+                       where top  = fromJust $ getTop q
+                             rest = extractTop q
 
 -- | /O(n log n)/. Compute union of two 'PriorityQueue's.
 --
@@ -272,3 +278,27 @@ instance Functor (PriorityQueue p) where
 -- path from root to leaf). You should use this function for testing.
 valid :: Show p => Ord p => PriorityQueue p v -> Bool
 valid = undefined
+
+singletonTree :: p -> v -> Tree p v
+singletonTree p v = Node 0 (p,v) []
+
+insertTree :: Ord p => Tree p v -> [Tree p v] -> [Tree p v]
+insertTree t []        = [t]
+insertTree t ts@(x:xs)
+          | rank t < rank x = t:ts
+          | otherwise       = insertTree (link t x) xs
+
+
+link :: Ord p => Tree p v -> Tree p v -> Tree p v
+link s@(Node r1 t1 xs) t@(Node _ t2 ys)
+    | fst t1 > fst t2 = Node (r1 + 1) t1 (t:xs)
+    | otherwise       = Node (r1 + 1) t2 (s:ys)
+
+rank :: Tree p v -> Int
+rank (Node r _ _) = r
+
+root :: Tree p v -> (p,v)
+root (Node _ t _) = t
+
+subtrees :: Tree p v -> [Tree p v]
+subtrees (Node _ _ l) = l
