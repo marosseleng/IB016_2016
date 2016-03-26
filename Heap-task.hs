@@ -238,7 +238,13 @@ union (PQueue s1 t1 l1) (PQueue s2 t2 l2) = PQueue newS newT newL
 -- | Define @'PriorityQueue' p@ to be an instance of 'Functor', keep in mind the
 -- standard behaviour of 'Functor'.
 instance Functor (PriorityQueue p) where
-    fmap = undefined
+  fmap _ PQEmpty            = PQEmpty
+  fmap f (PQueue s (p,v) l) = PQueue s (p,f v) newL
+                                  where newL = map (fmap f) l
+
+instance Functor (Tree p) where
+  fmap f (Node r (p,v) l) = Node r (p,f v) newL
+                              where newL = map (fmap f) l
 
 -- | Check validity of a given 'PriorityQueue', this should validate that 'size'
 -- returns the right value for the heap and all its subheaps and that all the
@@ -335,7 +341,7 @@ subtrees (Node _ _ l) = l
 
 
 -- | Merges two binomial forests (lists of binomial trees) together
--- 
+--
 unionOfLists :: Ord p => [Tree p v] -> [Tree p v] -> [Tree p v]
 unionOfLists [] l              = l
 unionOfLists l []              = l
