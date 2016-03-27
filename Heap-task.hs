@@ -242,6 +242,8 @@ instance Functor (PriorityQueue p) where
   fmap f (PQueue s (p,v) l) = PQueue s (p,f v) newL
                                   where newL = map (fmap f) l
 
+-- | We also need the Tree to be an instance of 'Functor'
+--
 instance Functor (Tree p) where
   fmap f (Node r (p,v) l) = Node r (p,f v) newL
                               where newL = map (fmap f) l
