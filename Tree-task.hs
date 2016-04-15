@@ -116,11 +116,12 @@ Tip: design of the appropriate data structures will help you a lot.
 -}
 
 module Main ( main ) where
-import           Control.Monad      (forM)
+import           Control.Monad      (filterM, forM)
 import           Data.List          (intercalate)
 import           System.Directory
 import           System.Environment (getArgs)
 import           System.FilePath
+import           System.IO          (hPutStrLn, stderr)
 
 data Config = Config
     { showHelp      :: Bool
@@ -142,9 +143,9 @@ instance Monoid (Flag a) where
 instance Monoid Config where
   mempty = defaultConfig
   c1 `mappend` c2 =
-    Config (noreport c1 || noreport c2)
-           (showHelp c1 || showHelp c2)
+    Config (showHelp c1 || showHelp c2)
            (showVersion c1 || showVersion c2)
+           (noreport c1 || noreport c2)
            (includeHidden c1 || includeHidden c2)
            (onlyDirs c1 || onlyDirs c2)
            (level c1 `mappend` level c2)
@@ -161,7 +162,7 @@ processArg arg = let opt = takeWhile (/= ' ') arg in
 
 configTable :: [ (String, String -> Config) ]
 configTable = [ ("-a", \_ -> defaultConfig { includeHidden = True })
-              , ("-d", \_ -> defaultConfig { onlyDirs = False })
+              , ("-d", \_ -> defaultConfig { onlyDirs = True })
               , ("-L", \x -> defaultConfig { level = Set (read (tail $ dropWhile (/= ' ') x) :: Int) })
               , ("--noreport", \_ -> defaultConfig { noreport = True })
               , ("-U", \_ -> defaultConfig { dirsfirst = Set False })
@@ -170,10 +171,6 @@ configTable = [ ("-a", \_ -> defaultConfig { includeHidden = True })
               , ("--version", \_ -> defaultConfig { showVersion = True })
               ]
 
-getLevel :: Flag Int -> Int
-getLevel NotSet  = -1
-getLevel (Set x) = x
-
 -- | The entry of your program.
 main :: IO ()
 main = do
@@ -181,40 +178,107 @@ main = do
   let config = mconcat . map processArg $ joinLevelOption args
   pwd <- getCurrentDirectory
   printed <- printDir pwd "" config
-  putStrLn $ filterDoubleSpaces printed
+  let currentDirName = takeFileName pwd
+  if showHelp config
+    then hPutStrLn stderr $ filterDoubleSpaces printed
+    else putStrLn $ currentDirName ++ "\n" ++ filterDoubleSpaces printed
 
+-- | Base function for printing the directory content
+--
 printDir :: FilePath -> String -> Config -> IO String
-printDir _ _ (Config _ True _ _ _ _ _)     = displayHelp
-printDir _ _ (Config _ _ True _ _ _ _)     = displayVersion
-printDir f p c@(Config _ _ _ _ _ NotSet _) = printDir f p c { level = Set (-1) }
-printDir _ _ (Config _ _ _ _ _ (Set 0) _)  = return ""
-printDir dir inheritedPrefix c@(Config _ _ _ _ _ (Set l) _) = do
-  entries <- fmap (filter (not . isThisOrParentDir)) (getDirectoryContents dir)
+printDir _ _ (Config True _ _ _ _ _ _)                      = displayHelp
+printDir _ _ (Config _ True _ _ _ _ _)                      = displayVersion
+printDir f p c@(Config _ _ _ _ _ NotSet _)                  = withoutLimit f p c
+printDir _ _ (Config _ _ _ _ _ (Set 0) _)                   = return ""
+printDir dir inheritedPrefix c@(Config _ _ _ h d (Set l) _) = do
+  -- Filter for -a option
+  let hiddenFilter = if h then isThisOrParentDir else isDotFile
+  filteredHidden <- fmap (filter (not . hiddenFilter)) (getDirectoryContents dir)
+  let absPaths = map (dir </>) filteredHidden
+  -- Filter for -d option
+  let dirFilter = if d then doesDirectoryExist else (\_ -> return True)
+  entries <- filterM dirFilter absPaths
+  -- Writing directory entries
   let lastEntry = last entries
   printed <- forM entries $ \e -> do
     let isLast = e == lastEntry
-    -- PREFICES SETTING
-    let colonPrefix = if isLast then "    " else "|   "
+    -- Setting prefices for the current line
     let branchPrefix = if isLast then "└── " else "├── "
+    let prefixToPrint = inheritedPrefix ++ branchPrefix
+    -- Setting prefices for the next line
+    let colonPrefix = if isLast then "    " else "|   "
     let nextPrefix = inheritedPrefix ++ colonPrefix
-
-    let absPath = dir </> e
-    isDir <- doesDirectoryExist absPath
-    let dirname = if isDir then e ++ "\n" else e
-    subdirPrinted <- if isDir then printDir absPath nextPrefix c { level = Set (l - 1) } else return ""
-    return $ inheritedPrefix ++ branchPrefix ++ dirname ++ subdirPrinted
+    -- Written file name
+    isDir <- doesDirectoryExist e
+    let justName = takeFileName e
+    let dirname = if isDir then justName ++ "\n" else justName
+    -- Print entry's content recursively
+    subdirPrinted <- if isDir
+      then printDir e nextPrefix c { level = Set (l - 1) }
+      else return ""
+    return $ prefixToPrint ++ dirname ++ subdirPrinted
   return $ intercalate "\n" printed
 
-displayHelp :: IO String
-displayHelp = return "This is help!"
+-- | Recursively prints the directory without the limit
+--
+withoutLimit :: FilePath -> String -> Config -> IO String
+withoutLimit d p c = printDir d p c { level = Set (-1) }
 
+-- | Function that returns IO String with the help of the program
+-- Using twice as many '\n' character as needed, because the output is filtered
+-- by the filterDoubleSpaces Function
+displayHelp :: IO String
+displayHelp = return
+  ("TREE(1)\n\n\n\n" ++
+  "\n\nNAME\n" ++
+  "\ttree - list contents of directories in a tree-like format.\n" ++
+  "\n\nSYNOPSIS\n" ++
+  "\ttree [-a] [-d] [-U] [-L  level] [--noreport] [--dirsfirst]" ++
+  " [--version]\n" ++
+  "\n\nDESCRIPTION\n" ++
+  "\tTree is a recursive directory listing program that " ++
+  "produces a depth indented listing of files in the current directory and" ++
+  " shows the output to tty. Upon completion of listing all " ++
+  "files/directories found, tree returns the total number of files and/or" ++
+  " directories listed.\n" ++
+  "\n\nOPTIONS\n" ++
+  "\tTree understands the following command line switches:\n" ++
+  "\n\nLISTING OPTIONS\n" ++
+  "\t-a\tAll files are printed. By default tree does not print hidden files" ++
+  "(those beginning with a dot `.'). In no event does tree print the file" ++
+  " system constructs `.' (current directory) and `..'" ++
+  " (previous directory).\n" ++
+  "\n\n\t-d\tList directories only.\n" ++
+  "\n\n\t-L level\n\t\tMax display depth of the directory tree.\n" ++
+  "\n\n\t--noreport\n\t\tOmits printing of the file and directory report at" ++
+  "the end of the tree listing.\n" ++
+  "\n\nSORTING OPTIONS\n" ++
+  "\t-U\tDo not sort. Lists files in directory order. " ++
+  "Disables --dirsfirst.\n" ++
+  "\n\n\t--dirsfirst\n\t\tList directories before files." ++
+  "This option is disabled when -U is used.\n" ++
+  "\n\nMISC OPTIONS\n" ++
+  "\t--help\tOutputs a verbose usage listing.\n" ++
+  "\n\n\t--version\n\t\tOutputs the version of tree.\n" ++
+  "\n\nAUTHOR\n" ++
+  "\tMaros Seleng (xseleng@fi.muni.cz)" ++
+  "\n"
+  )
+
+-- | Displays the version of a program and the name of its developer
+--
 displayVersion :: IO String
-displayVersion = return "tree, v. 0.9.0\nAuthor Maros Seleng"
+displayVersion = return "tree v0.9.0 (c) 2016 by Maros Seleng"
 
 
 
 -- | Filters double spaces generated by the directory printing
 -- Double spaces occur when passed the empty directory
+-- >>> filterDoubleSpaces "\n\n"
+-- "\n"
+--
+-- >>> filterDoubleSpaces "\n\n\n\n"
+-- "\n\n"
 --
 filterDoubleSpaces :: String -> String
 filterDoubleSpaces ""             = ""
@@ -222,11 +286,23 @@ filterDoubleSpaces [c]            = [c]
 filterDoubleSpaces ('\n':'\n':xs) = '\n' : filterDoubleSpaces xs
 filterDoubleSpaces (x:xs)         = x : filterDoubleSpaces xs
 
+-- | Returns 'True' if the given file is `.' or `..', 'False' otherwise
+--
 isThisOrParentDir :: FilePath -> Bool
 isThisOrParentDir "."  = True
 isThisOrParentDir ".." = True
 isThisOrParentDir _    = False
 
+-- | Returns 'True' if the given file's name starts with a dot (.)
+--
+isDotFile :: FilePath -> Bool
+isDotFile "" = False
+isDotFile s  = head s == '.'
+
+-- | Joins "-L" and following option to single one
+-- >>> joinLevelOption ["-L","42"]
+-- ["-L 42"]
+--
 joinLevelOption :: [String] -> [String]
 joinLevelOption []          = []
 joinLevelOption [x]         = [x]
