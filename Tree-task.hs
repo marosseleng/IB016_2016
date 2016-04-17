@@ -112,8 +112,15 @@ test
 For more examples use @tree@ for example on @aisa@.
 
 Tip: design of the appropriate data structures will help you a lot.
-└──├──
 -}
+
+
+-- THINGS THAT ARE NOT MADE:
+-- -U and --dirsfirst
+-- user cannot specify the folder that is being written,
+-- eg. the program only prints the tree of the current directory
+-- This is because of my bad timing of this homework.
+
 
 module Main ( main ) where
 import           Control.Monad      (filterM, forM)
@@ -183,8 +190,10 @@ main = do
   (dirsCount, filesCount, printed) <- printDir pwd "" config
   let countInfo = if noreport config
                     then ""
-                    else "\n\n" ++ show dirsCount ++ " directories, " ++
-                    show filesCount ++ " files"
+                    else "\n\n" ++ show dirsCount ++ " directories" ++
+                    (if onlyDirs config
+                      then ""
+                      else ", " ++ show filesCount ++ " files")
   let currentDirName = takeFileName pwd
   if showHelp config
     then putStrLn $ filterDoubleSpaces printed
