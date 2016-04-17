@@ -125,6 +125,7 @@ Tip: design of the appropriate data structures will help you a lot.
 module Main ( main ) where
 import           Control.Monad      (filterM, forM)
 import           Data.List          (intercalate)
+import           Data.Monoid
 import           System.Directory
 import           System.Environment (getArgs)
 import           System.FilePath
